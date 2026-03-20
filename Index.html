@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Physarum — Multi-Species</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; width:100vw; height:100vh; font-family:monospace; display:flex; align-items:center; justify-content:center; }
+#wrap { position:relative; flex-shrink:0; }
+canvas { display:block; }
+
+/* ── Floating panel ───────────────────────────────────────────── */
+#ui {
+  position:fixed; top:20px; left:20px; z-index:100;
+  width:260px; min-width:200px; max-width:480px;
+  max-height:90vh;
+  background:rgba(6,12,6,0.83);
+  border:1px solid #2a4a2a;
+  border-radius:8px;
+  display:flex; flex-direction:column;
+  box-shadow:0 4px 32px rgba(0,0,0,0.7);
+  overflow:hidden;
+  resize:horizontal; /* native CSS resize on x-axis */
+}
+
+/* drag handle / title bar */
+#ui-bar {
+  background:#0a1a0a;
+  border-bottom:1px solid #1a3a1a;
+  padding:6px 10px;
+  cursor:grab;
+  display:flex; align-items:center; justify-content:space-between;
+  user-select:none; flex-shrink:0;
+}
+#ui-bar:active { cursor:grabbing; }
+#ui-bar h2 { font-size:10px; letter-spacing:2px; color:#6c6; font-weight:normal; text-transform:uppercase; }
+#ui-toggle {
+  font-size:11px; color:#4a8; cursor:pointer; padding:0 4px;
+  background:none; border:none; font-family:monospace;
+}
+#ui-toggle:hover { color:#6c6; }
+
+#ui-body {
+  overflow-y:auto; overflow-x:hidden;
+  padding:8px 12px 10px;
+  font-size:11px; color:#8a8; line-height:1.9;
+  flex:1;
+  scrollbar-width:thin;
+  scrollbar-color:#1a3a1a #060c06;
+}
+#ui-body::-webkit-scrollbar { width:4px; }
+#ui-body::-webkit-scrollbar-track { background:#060c06; border-radius:2px; }
+#ui-body::-webkit-scrollbar-thumb { background:#1a3a1a; border-radius:2px; }
+#ui-body::-webkit-scrollbar-thumb:hover { background:#2a5a2a; }
+
+.section { font-size:9px; letter-spacing:1px; color:#484; margin:7px 0 2px; text-transform:uppercase; border-top:1px solid #1a2a1a; padding-top:4px; }
+label { display:flex; align-items:center; justify-content:space-between; gap:4px; flex-wrap:nowrap; }
+input[type=range] { flex:1; min-width:60px; max-width:120px; accent-color:#4a8; height:18px; cursor:pointer; }
+select {
+  background:#0a140a; border:1px solid #2a4a2a; color:#9c9;
+  font-family:monospace; font-size:10px; padding:1px 3px;
+  border-radius:3px; flex:1; min-width:60px;
+}
+.val { min-width:36px; text-align:right; color:#aca; font-size:10px; flex-shrink:0; }
+button {
+  margin-top:5px; width:100%; padding:4px;
+  background:#0a140a; border:1px solid #2a4a2a;
+  color:#8c8; cursor:pointer; border-radius:3px;
+  font-family:monospace; font-size:10px;
+}
+button.rebuild { border-color:#886622; color:#cc9944; background:#1a1205; }
+button.fullscreen { border-color:#1a4a4a; color:#4acaca; background:#051212; }
+button:hover { background:#122012; }
+button.rebuild:hover { background:#251a05; }
+button.fullscreen:hover { background:#0a2020; }
+.sp-tabs { display:flex; gap:3px; margin:5px 0 3px; }
+.sp-tab { flex:1; padding:3px 0; text-align:center; cursor:pointer; border:1px solid #2a2a2a; border-radius:3px; font-size:10px; color:#666; background:#0a0a0a; }
+.sp-tab.active { color:#ddd; border-color:#4a8; background:#0a1a0a; }
+.mx-cell { font-size:9px; text-align:center; padding:2px 0; border:1px solid #1a2a1a; border-radius:2px; cursor:pointer; background:#0a0a0a; color:#666; line-height:1.3; user-select:none; }
+.mx-cell.attract { background:#0a1a0a; color:#6c6; border-color:#2a4a2a; }
+.mx-cell.repel   { background:#1a0a0a; color:#c66; border-color:#4a2a2a; }
+.mx-cell.ignore  { background:#0a0a12; color:#66c; border-color:#2a2a4a; }
+.mx-label { font-size:9px; color:#484; text-align:center; }
+#res-info { font-size:9px; color:#484; margin-top:3px; line-height:1.5; }
+
+/* ── HSV colour block ─────────────────────────────────────────── */
+.hsv-block { margin:4px 0 2px; }
+.hsv-row { display:flex; align-items:center; gap:5px; margin-bottom:3px; }
+.hsv-label { font-size:9px; color:#585; width:10px; flex-shrink:0; }
+.hsv-row input[type=range] { flex:1; }
+/* hue track gradient */
+.hue-range { background: linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); border-radius:4px; }
+.colour-preview { width:22px; height:22px; border-radius:4px; border:1px solid #333; flex-shrink:0; margin-left:4px; }
+
+.sp-move { display:none; margin-top:2px; }
+.sp-move.active { display:block; }
+.sp-move-sub { font-size:9px; color:#363; margin:3px 0 2px; letter-spacing:1px; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+
+<div id="ui">
+  <div id="ui-bar">
+    <h2>physarum multi-species</h2>
+    <button id="ui-toggle" title="collapse/expand">▾</button>
+  </div>
+  <div id="ui-body">
+
+  <!-- ── SIMULATION SETTINGS ── -->
+  <div class="section">simulation settings</div>
+  <label>resolution
+    <select id="res">
+      <option value="426x240">426×240 (240p)</option>
+      <option value="640x360">640×360 (360p)</option>
+      <option value="854x480">854×480 (480p)</option>
+      <option value="1280x720" selected>1280×720 (720p)</option>
+      <option value="1920x1080">1920×1080 (1080p)</option>
+    </select>
+  </label>
+  <label>agents/species
+    <select id="agc">
+      <option value="10000">10k (fast)</option>
+      <option value="30000">30k</option>
+      <option value="60000">60k</option>
+      <option value="90000" selected>90k (default)</option>
+      <option value="150000">150k (dense)</option>
+      <option value="250000">250k (heavy)</option>
+    </select>
+  </label>
+  <div id="res-info">canvas: 1280×720 · agents: 90k×3</div>
+  <button class="rebuild" id="rebuildBtn">⚙  apply &amp; rebuild</button>
+  <button class="fullscreen" id="fullscreenBtn">⛶  fullscreen</button>
+
+  <!-- ── PRESETS ── -->
+  <div class="section" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" id="presetToggle">
+    <span>presets</span><span id="presetArrow" style="font-size:10px;color:#4a8;">▾</span>
+  </div>
+  <div id="presetBody">
+    <select id="presetSel" style="width:100%;margin-bottom:4px;"></select>
+    <button id="presetLoadBtn">▶  load preset</button>
+    <div style="display:flex;gap:4px;margin-top:4px;">
+      <input type="text" id="presetName" placeholder="preset name…" style="flex:1;background:#0a140a;border:1px solid #2a4a2a;color:#9c9;font-family:monospace;font-size:10px;padding:3px 5px;border-radius:3px;min-width:0;">
+      <button id="presetSaveBtn" style="margin-top:0;width:auto;padding:3px 8px;">save</button>
+    </div>
+    <button id="presetDelBtn" style="border-color:#4a2a2a;color:#c66;background:#1a0a0a;margin-top:4px;">✕  delete preset</button>
+  </div>
+
+  <!-- ── SPECIES ── -->
+  <div class="section">species</div>
+  <div class="sp-tabs">
+    <div class="sp-tab active" id="tab0">A</div>
+    <div class="sp-tab" id="tab1">B</div>
+    <div class="sp-tab" id="tab2">C</div>
+  </div>
+
+  <div id="panel0">
+    <label>enabled <input type="checkbox" id="en0" checked></label>
+    <div class="hsv-block">
+      <div class="hsv-row">
+        <span class="hsv-label">H</span>
+        <input type="range" class="hue-range" id="hh0" min="0" max="360" value="0" step="1">
+        <span class="val" id="lhh0">0°</span>
+        <div class="colour-preview" id="cp0"></div>
+      </div>
+      <div class="hsv-row">
+        <span class="hsv-label">S</span>
+        <input type="range" id="hs0" min="0" max="100" value="100" step="1">
+        <span class="val" id="lhs0">100%</span>
+      </div>
+      <div class="hsv-row">
+        <span class="hsv-label">V</span>
+        <input type="range" id="hv0" min="0" max="100" value="100" step="1">
+        <span class="val" id="lhv0">100%</span>
+      </div>
+      <div class="hsv-row">
+        <span class="hsv-label">A</span>
+        <input type="range" id="ha0" min="0" max="100" value="100" step="1">
+        <span class="val" id="lha0">100%</span>
+      </div>
+    </div>
+    <label>separate colours <input type="checkbox" id="sep0"></label>
+    <label>behaviour <select id="bh0"><option value="0">normal</option><option value="1">wanderer</option><option value="2">avoider</option><option value="3">orbiter</option><option value="4">predator</option></select></label>
+    <label>spawn <select id="sp0"><option value="random">random</option><option value="point">point</option><option value="ring">ring out</option><option value="ring_in">ring in</option><option value="blobs_l">left blob</option><option value="blobs_r">right blob</option><option value="spiral">spiral</option><option value="edges">edges</option><option value="top_half">top half</option><option value="bot_half">bot half</option></select></label>
+    <label>trail size <input type="range" id="ts0" min="1" max="20" value="1" step="0.5"> <span class="val" id="lts0">1.0</span></label>
+    <label>own movement <input type="checkbox" id="om0"></label>
+    <div class="sp-move" id="sm0">
+      <div class="sp-move-sub">↳ species A movement</div>
+      <label>sensor angle <input type="range" id="sa0" min="5" max="80" value="30" step="1"> <span class="val" id="lsa0">30°</span></label>
+      <label>sensor dist  <input type="range" id="sd0" min="4" max="60" value="18" step="1"> <span class="val" id="lsd0">18</span></label>
+      <label>turn speed   <input type="range" id="tu0" min="2" max="60" value="25" step="1"> <span class="val" id="ltu0">25°</span></label>
+      <label>move speed   <input type="range" id="mv0" min="0.5" max="8" value="2.0" step="0.1"> <span class="val" id="lmv0">2.0</span></label>
+      <label>trail life   <input type="range" id="tl0" min="5" max="300" value="60" step="5"> <span class="val" id="ltl0">60s</span></label>
+    </div>
+  </div>
+
+  <div id="panel1" style="display:none">
+    <label>enabled <input type="checkbox" id="en1" checked></label>
+    <div class="hsv-block">
+      <div class="hsv-row">
+        <span class="hsv-label">H</span>
+        <input type="range" class="hue-range" id="hh1" min="0" max="360" value="240" step="1">
+        <span class="val" id="lhh1">240°</span>
+        <div class="colour-preview" id="cp1"></div>
+      </div>
+      <div class="hsv-row">
+        <span class="hsv-label">S</span>
+        <input type="range" id="hs1" min="0" max="100" value="100" step="1">
+        <span class="val" id="lhs1">100%</span>
+      </div>
+      <div class="hsv-row">
+        <span class="hsv-label">V</span>
+        <input type="range" id="hv1" min="0" max="100" value="100" step="1">
+        <span class="val" id="lhv1">100%</span>
+      </div>
+      <div class="hsv-row">
+        <span class="hsv-label">A</span>
+        <input type="range" id="ha1" min="0" max="100" value="100" step="1">
+        <span class="val" id="lha1">100%</span>
+      </div>
+    </div>
+    <label>separate colours <input type="checkbox" id="sep1"></label>
+    <label>behaviour <select id="bh1"><option value="0">normal</option><option value="1">wanderer</option><option value="2">avoider</option><option value="3">orbiter</option><option value="4">predator</option></select></label>
+    <label>spawn <select id="sp1"><option value="random">random</option><option value="point">point</option><option value="ring">ring out</option><option value="ring_in">ring in</option><option value="blobs_l">left blob</option><option value="blobs_r">right blob</option><option value="spiral">spiral</option><option value="edges">edges</option><option value="top_half">top half</option><option value="bot_half">bot half</option></select></label>
+    <label>trail size <input type="range" id="ts1" min="1" max="20" value="1" step="0.5"> <span class="val" id="lts1">1.0</span></label>
+    <label>own movement <input type="checkbox" id="om1"></label>
+    <div class="sp-move" id="sm1">
+      <div class="sp-move-sub">↳ species B movement</div>
+      <label>sensor angle <input type="range" id="sa1" min="5" max="80" value="30" step="1"> <span class="val" id="lsa1">30°</span></label>
+      <label>sensor dist  <input type="range" id="sd1" min="4" max="60" value="18" step="1"> <span class="val" id="lsd1">18</span></label>
+      <label>turn speed   <input type="range" id="tu1" min="2" max="60" value="25" step="1"> <span class="val" id="ltu1">25°</span></label>
+      <label>move speed   <input type="range" id="mv1" min="0.5" max="8" value="2.0" step="0.1"> <span class="val" id="lmv1">2.0</span></label>
+      <label>trail life   <input type="range" id="tl1" min="5" max="300" value="60" step="5"> <span class="val" id="ltl1">60s</span></label>
+    </div>
+  </div>
+
+  <div id="panel2" style="display:none">
+    <label>enabled <input type="checkbox" id="en2"></label>
+    <div class="hsv-block">
+      <div class="hsv-row">
+        <span class="hsv-label">H</span>
+        <input type="range" class="hue-range" id="hh2" min="0" max="360" value="120" step="1">
+        <span class="val" id="lhh2">120°</span>
+        <div class="colour-preview" id="cp2"></div>
+      </div>
+      <div class="hsv-row">
+        <span class="hsv-label">S</span>
+        <input type="range" id="hs2" min="0" max="100" value="100" step="1">
+        <span class="val" id="lhs2">100%</span>
+      </div>
+      <div class="hsv-row">
+        <span class="hsv-label">V</span>
+        <input type="range" id="hv2" min="0" max="100" value="100" step="1">
+        <span class="val" id="lhv2">100%</span>
+      </div>
+      <div class="hsv-row">
+        <span class="hsv-label">A</span>
+        <input type="range" id="ha2" min="0" max="100" value="100" step="1">
+        <span class="val" id="lha2">100%</span>
+      </div>
+    </div>
+    <label>separate colours <input type="checkbox" id="sep2"></label>
+    <label>behaviour <select id="bh2"><option value="0">normal</option><option value="1">wanderer</option><option value="2">avoider</option><option value="3">orbiter</option><option value="4">predator</option></select></label>
+    <label>spawn <select id="sp2"><option value="random">random</option><option value="point">point</option><option value="ring">ring out</option><option value="ring_in">ring in</option><option value="blobs_l">left blob</option><option value="blobs_r">right blob</option><option value="spiral">spiral</option><option value="edges">edges</option><option value="top_half">top half</option><option value="bot_half">bot half</option></select></label>
+    <label>trail size <input type="range" id="ts2" min="1" max="20" value="1" step="0.5"> <span class="val" id="lts2">1.0</span></label>
+    <label>own movement <input type="checkbox" id="om2"></label>
+    <div class="sp-move" id="sm2">
+      <div class="sp-move-sub">↳ species C movement</div>
+      <label>sensor angle <input type="range" id="sa2" min="5" max="80" value="30" step="1"> <span class="val" id="lsa2">30°</span></label>
+      <label>sensor dist  <input type="range" id="sd2" min="4" max="60" value="18" step="1"> <span class="val" id="lsd2">18</span></label>
+      <label>turn speed   <input type="range" id="tu2" min="2" max="60" value="25" step="1"> <span class="val" id="ltu2">25°</span></label>
+      <label>move speed   <input type="range" id="mv2" min="0.5" max="8" value="2.0" step="0.1"> <span class="val" id="lmv2">2.0</span></label>
+      <label>trail life   <input type="range" id="tl2" min="5" max="300" value="60" step="5"> <span class="val" id="ltl2">60s</span></label>
+    </div>
+  </div>
+
+  <!-- ── INTERACTIONS ── -->
+  <div class="section">interactions (click to cycle)</div>
+  <div style="display:grid;grid-template-columns:18px 1fr 1fr 1fr;gap:2px;align-items:center;font-size:9px;margin-bottom:2px;">
+    <div></div><div class="mx-label">tr.A</div><div class="mx-label">tr.B</div><div class="mx-label">tr.C</div>
+    <div class="mx-label">A</div>
+    <div class="mx-cell attract" id="mx00">follow</div><div class="mx-cell ignore" id="mx01">ignore</div><div class="mx-cell ignore" id="mx02">ignore</div>
+    <div class="mx-label">B</div>
+    <div class="mx-cell ignore" id="mx10">ignore</div><div class="mx-cell attract" id="mx11">follow</div><div class="mx-cell ignore" id="mx12">ignore</div>
+    <div class="mx-label">C</div>
+    <div class="mx-cell ignore" id="mx20">ignore</div><div class="mx-cell ignore" id="mx21">ignore</div><div class="mx-cell attract" id="mx22">follow</div>
+  </div>
+  <div style="font-size:9px;color:#363;line-height:1.4;">follow · flee · ignore</div>
+
+  <!-- ── MOVEMENT ── -->
+  <div class="section" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" id="moveToggle">
+    <span>global movement</span><span id="moveArrow" style="font-size:10px;color:#4a8;">▾</span>
+  </div>
+  <div id="moveBody">
+  <label>sensor angle <input type="range" id="sa" min="5" max="80" value="30" step="1"> <span class="val" id="lsa">30°</span></label>
+  <label>sensor dist  <input type="range" id="sd" min="4" max="60" value="18" step="1"> <span class="val" id="lsd">18</span></label>
+  <label>turn speed   <input type="range" id="ts" min="2" max="60" value="25" step="1"> <span class="val" id="lts">25°</span></label>
+  <label>move speed   <input type="range" id="mv" min="0.5" max="8" value="2.0" step="0.1"> <span class="val" id="lmv">2.0</span></label>
+  <label>trail life   <input type="range" id="tl" min="5" max="300" value="60" step="5"> <span class="val" id="ltl">60s</span></label>
+  </div>
+
+  <!-- ── VISUALS ── -->
+  <div class="section">visuals</div>
+  <label>brightness <input type="range" id="br" min="0.1" max="1.0" value="1.0" step="0.01"> <span class="val" id="lbr">1.00</span></label>
+  <label>glow       <input type="range" id="gl" min="0.0" max="2.0" value="0.0" step="0.05"> <span class="val" id="lgl">0.00</span></label>
+
+  <button id="resetBtn">↺  respawn</button>
+
+  </div><!-- /ui-body -->
+</div><!-- /ui -->
+
+<script>
+/*
+ * ============================================================
+ *  PHYSARUM POLYCEPHALUM — Multi-Species Slime Mould Simulation
+ * ============================================================
+ *
+ *  © Andrei Tenche. All rights reserved.
+ *
+ *  Made with:
+ *    - Mostly insomnia
+ *    - Love (a lot of it)
+ *    - Frustration (also a lot of it)
+ *    - Some tears
+ *    - Coffee (an unreasonable amount)
+ *    - Some blood
+ *
+ *  A blessing upon this code, in the spirit of C.R.E.A.M.
+ *  by the Wu-Tang Clan — because cash rules everything,
+ *  but so does slime mould, and both are a staple in my life atm.
+ *  Wu-Tang is for the children. And for the agents.
+ *  36 chambers. 90,000 agents. Same energy.
+ *
+ * ============================================================
+ */
+(function(){
+
+var canvas = document.getElementById('c');
+var gl = canvas.getContext('webgl2');
+if(!gl){ document.body.innerHTML='<p style="color:#f88;padding:2rem">WebGL2 not supported</p>'; return; }
+gl.getExtension('EXT_color_buffer_float');
+
+// ── Current simulation dimensions ──────────────────────────────
+var W = 1280, H = 720, NperS = 90000, NS = 3;
+
+var pAg=null, pDp=null, pFd=null, pCl=null, pGl=null;
+
+// ── Species state — colour now stored as HSV (h:0-360, s:0-1, v:0-1) ──
+var species = [
+  {enabled:true,  h:0,   s:1.0, v:1.0, a:1.0, separate:false, behav:0, spawn:'random', trailSize:1.0, ownMove:false, sa:null, sd:null, ts:null, speed:null, trailLife:null},
+  {enabled:true,  h:240, s:1.0, v:1.0, a:1.0, separate:false, behav:0, spawn:'random', trailSize:1.0, ownMove:false, sa:null, sd:null, ts:null, speed:null, trailLife:null},
+  {enabled:false, h:120, s:1.0, v:1.0, a:1.0, separate:false, behav:0, spawn:'random', trailSize:1.0, ownMove:false, sa:null, sd:null, ts:null, speed:null, trailLife:null}
+];
+var interact = [[1,0,0],[0,1,0],[0,0,1]];
+var global = {sa:30, sd:18, ts:25, speed:2.0, trailLife:60, bri:1.0, glow:0.0};
+
+// Convert HSV (h:0-360, s:0-1, v:0-1) → hue normalised 0-1 for shader
+// The colour shader uses HSV natively now
+function hsvToRgb(h, s, v) {
+  var c = v * s, x = c * (1 - Math.abs((h/60) % 2 - 1)), m = v - c;
+  var r=0,g=0,b=0;
+  if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}
+  else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}
+  return [(r+m)*255|0, (g+m)*255|0, (b+m)*255|0];
+}
+
+function updatePreview(i) {
+  var sp=species[i], rgb=hsvToRgb(sp.h,sp.s,sp.v);
+  document.getElementById('cp'+i).style.background='rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+sp.a+')';
+}
+
+// ── Shader builders ────────────────────────────────────────────
+function buildShaders(){
+  function sh(t,s){
+    var x=gl.createShader(t); gl.shaderSource(x,s); gl.compileShader(x);
+    if(!gl.getShaderParameter(x,gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(x)+'\n'+s;
+    return x;
+  }
+  function pg(v,f){
+    var p=gl.createProgram();
+    gl.attachShader(p,sh(gl.VERTEX_SHADER,v));
+    gl.attachShader(p,sh(gl.FRAGMENT_SHADER,f));
+    gl.linkProgram(p);
+    if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw gl.getProgramInfoLog(p);
+    return p;
+  }
+
+  var VS_QUAD = `#version 300 es
+in vec2 p; out vec2 uv;
+void main(){ uv=p*.5+.5; gl_Position=vec4(p,0,1); }`;
+
+  var FS_AGENT = `#version 300 es
+precision highp float;
+uniform highp sampler2D tA, tT;
+uniform float SA,SD,TS,SP,TM;
+uniform int BHV;
+uniform vec3 uW;
+in vec2 uv; out vec4 fc;
+float hash(vec2 q){ return fract(sin(dot(q,vec2(127.1,311.7)))*43758.5453); }
+float hash2(vec2 q){ return fract(sin(dot(q,vec2(269.5,183.3)))*43758.5453); }
+float sense(vec2 pos,float ang){
+  vec2 sp=mod(pos+vec2(cos(ang),sin(ang))*SD,vec2(${W}.,${H}.));
+  return dot(texture(tT,sp/vec2(${W}.,${H}.) ).rgb, uW);
+}
+void main(){
+  vec4 ag=texture(tA,uv);
+  vec2 pos=ag.xy; float ang=ag.z; float seed=ag.w;
+  float rng=hash(pos*.017+vec2(seed*.001,TM*.0013));
+  float rng2=hash2(pos*.023+vec2(seed*.002,TM*.0017));
+  float FL=sense(pos,ang-SA), F=sense(pos,ang), FR=sense(pos,ang+SA);
+  if(BHV==0){
+    if(F>=FL&&F>=FR){} else if(FL>FR) ang-=TS; else if(FR>FL) ang+=TS; else ang+=(rng>.5?TS:-TS);
+  } else if(BHV==1){
+    float drift=(rng-.5)*SA*1.5;
+    if(F>=FL&&F>=FR){ ang+=drift*.3; } else if(FL>FR) ang-=TS*(.5+rng*.5); else if(FR>FL) ang+=TS*(.5+rng*.5); else ang+=drift;
+  } else if(BHV==2){
+    if(F<=FL&&F<=FR){} else if(FL<FR) ang-=TS; else if(FR<FL) ang+=TS; else ang+=(rng>.5?TS:-TS);
+    if(F>0.3) ang+=(rng>.5?TS*2.:-TS*2.);
+  } else if(BHV==3){
+    if(F>=FL&&F>=FR){ ang-=TS*.6; } else if(FL>FR) ang-=TS; else if(FR>FL) ang+=TS*.3; else ang-=TS;
+  } else if(BHV==4){
+    float boost=1.0+F*2.0;
+    if(F>=FL&&F>=FR){} else if(FL>FR) ang-=TS*boost; else if(FR>FL) ang+=TS*boost; else ang+=(rng>.5?TS:-TS);
+    if(rng2<0.01) ang+=(rng>.5?3.14159:-3.14159);
+  }
+  float spd=SP;
+  if(BHV==1) spd=SP*(0.5+rng*1.0);
+  if(BHV==4) spd=SP*(1.0+max(F,0.)*1.5);
+  fc=vec4(mod(pos+vec2(cos(ang),sin(ang))*spd+vec2(${W}.,${H}.),vec2(${W}.,${H}.)),ang,seed);
+}`;
+
+  var VS_DEP = `#version 300 es
+precision highp float;
+uniform highp sampler2D tA; uniform vec2 aSz; uniform float uPtSz;
+void main(){
+  int ix=gl_VertexID%int(aSz.x), iy=gl_VertexID/int(aSz.x);
+  vec4 a=texelFetch(tA,ivec2(ix,iy),0);
+  vec2 ndc=a.xy/vec2(${W}.,${H}.)*2.-1.;
+  gl_Position=vec4(ndc.x,-ndc.y,0,1);
+  gl_PointSize=uPtSz;
+}`;
+  var FS_DEP = `#version 300 es
+precision highp float; out vec4 fc;
+void main(){
+  vec2 pc=gl_PointCoord*2.0-1.0;
+  float d=dot(pc,pc);
+  if(d>1.0) discard;
+  fc=vec4(1.0-smoothstep(0.0,1.0,d));
+}`;
+
+  var FS_FADE = `#version 300 es
+precision highp float;
+uniform sampler2D tT; uniform vec3 uStep3;
+in vec2 uv; out vec4 fc;
+void main(){
+  vec4 v=texture(tT,uv);
+  fc=vec4(max(v.rgb-uStep3,vec3(0)),1);
+}`;
+
+  // Colour shader now takes full HSV per species and converts internally
+  // uHSV: xy=hs for spA, zw=hs for spB; uHSV2: xy=hs for spC
+  // uVal: xyz = v for spA, spB, spC
+  var FS_COL = `#version 300 es
+precision highp float;
+uniform sampler2D tT;
+uniform vec3  uH;      // hue 0-1 for A, B, C
+uniform vec3  uS;      // saturation 0-1 for A, B, C
+uniform vec3  uV;      // value ceiling 0-1 for A, B, C
+uniform vec3  uA;      // alpha/opacity 0-1 for A, B, C
+uniform vec3  uSep3;   // per-species separation flag (1=separate, 0=additive)
+uniform float uB;      // global brightness
+in vec2 uv; out vec4 fc;
+
+vec3 hsv2rgb(float h, float s, float v, float t){
+  float bri = v * t;
+  vec3 rgb = clamp(abs(mod(h*6.0+vec3(0,4,2),6.0)-3.0)-1.0, 0.0, 1.0);
+  return bri * mix(vec3(1.0), rgb, s);
+}
+
+void main(){
+  vec3 t = texture(tT, uv).rgb * uB;
+
+  float wA = (uSep3.x > 0.5) ? ((t.x >= t.y && t.x >= t.z) ? 1.0 : 0.0) : 1.0;
+  float wB = (uSep3.y > 0.5) ? ((t.y >  t.x && t.y >= t.z) ? 1.0 : 0.0) : 1.0;
+  float wC = (uSep3.z > 0.5) ? ((t.z >  t.x && t.z >  t.y) ? 1.0 : 0.0) : 1.0;
+
+  vec3 col = hsv2rgb(uH.x, uS.x, uV.x, t.x) * uA.x * wA
+           + hsv2rgb(uH.y, uS.y, uV.y, t.y) * uA.y * wB
+           + hsv2rgb(uH.z, uS.z, uV.z, t.z) * uA.z * wC;
+  fc = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+
+  var FS_GLOW = `#version 300 es
+precision highp float;
+uniform sampler2D tC; uniform float uG;
+in vec2 uv; out vec4 fc;
+void main(){
+  vec3 col=texture(tC,uv).rgb;
+  if(uG<0.001){ fc=vec4(col,1); return; }
+  vec2 px=1./vec2(${W}.,${H}.);
+  vec3 bloom=vec3(0); float tw=0.;
+  for(int y=-3;y<=3;y++) for(int x=-3;x<=3;x++){
+    float w=exp(-float(x*x+y*y)*.18);
+    bloom+=texture(tC,uv+vec2(float(x),float(y))*px*2.).rgb*w; tw+=w;
+  }
+  fc=vec4(clamp(col+bloom/tw*uG,0.,1.),1);
+}`;
+
+  [pAg,pDp,pFd,pCl,pGl].forEach(function(p){ if(p) gl.deleteProgram(p); });
+  pAg = pg(VS_QUAD, FS_AGENT);
+  pDp = pg(VS_DEP,  FS_DEP);
+  pFd = pg(VS_QUAD, FS_FADE);
+  pCl = pg(VS_QUAD, FS_COL);
+  pGl = pg(VS_QUAD, FS_GLOW);
+}
+
+// ── Geometry ──────────────────────────────────────────────────
+var qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,qb);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+function bq(p){ gl.bindBuffer(gl.ARRAY_BUFFER,qb); var l=gl.getAttribLocation(p,'p'); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0); }
+
+// ── Textures ──────────────────────────────────────────────────
+function mkTf(w,h,d){
+  var t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,w,h,0,gl.RGBA,gl.FLOAT,d||null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  return t;
+}
+function mkF(t){ var f=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,f); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0); return f; }
+function bt(u,t){ gl.activeTexture(gl.TEXTURE0+u); gl.bindTexture(gl.TEXTURE_2D,t); }
+function ul(p,n){ return gl.getUniformLocation(p,n); }
+
+// ── Spawn ─────────────────────────────────────────────────────
+function spawnOne(mode,n){
+  var AGW=Math.ceil(Math.sqrt(n)), AGH=Math.ceil(n/AGW);
+  // FIX: allocate full AGW*AGH but initialise padding pixels off-canvas
+  var d=new Float32Array(AGW*AGH*4);
+  // pre-fill padding with off-canvas sentinel (-1,-1)
+  for(var k=0;k<AGW*AGH;k++){ d[k*4]=-1; d[k*4+1]=-1; }
+  var cx=W/2, cy=H/2;
+  for(var i=0;i<n;i++){
+    var x,y,a,t2=i/n;
+    switch(mode){
+      case 'point': a=Math.random()*Math.PI*2; x=cx+Math.cos(a)*3; y=cy+Math.sin(a)*3; break;
+      case 'ring':  a=t2*Math.PI*2; var r=Math.min(W,H)*0.28+Math.random()*20; x=cx+Math.cos(a)*r; y=cy+Math.sin(a)*r; break;
+      case 'ring_in': a=t2*Math.PI*2; var ri=Math.min(W,H)*0.32+Math.random()*20; x=cx+Math.cos(a)*ri; y=cy+Math.sin(a)*ri; a+=Math.PI; break;
+      case 'blobs_l': x=W*0.25+(Math.random()-.5)*W*0.15; y=cy+(Math.random()-.5)*H*0.3; a=Math.random()*Math.PI*2; break;
+      case 'blobs_r': x=W*0.75+(Math.random()-.5)*W*0.15; y=cy+(Math.random()-.5)*H*0.3; a=Math.random()*Math.PI*2; break;
+      case 'spiral': var ga=2.39996; a=i*ga; var rs=Math.sqrt(t2)*Math.min(W,H)*0.42; x=cx+Math.cos(a)*rs; y=cy+Math.sin(a)*rs; a+=Math.PI/2; break;
+      case 'edges':
+        var side=Math.floor(Math.random()*4);
+        if(side===0){x=Math.random()*W;y=2;a=Math.PI/2;}
+        else if(side===1){x=Math.random()*W;y=H-2;a=-Math.PI/2;}
+        else if(side===2){x=2;y=Math.random()*H;a=0;}
+        else{x=W-2;y=Math.random()*H;a=Math.PI;}
+        a+=(Math.random()-.5)*0.5; break;
+      case 'top_half': x=Math.random()*W; y=Math.random()*H*0.5; a=Math.random()*Math.PI*2; break;
+      case 'bot_half': x=Math.random()*W; y=H*0.5+Math.random()*H*0.5; a=Math.random()*Math.PI*2; break;
+      default: x=Math.random()*W; y=Math.random()*H; a=Math.random()*Math.PI*2;
+    }
+    d[i*4]=x; d[i*4+1]=y; d[i*4+2]=a; d[i*4+3]=Math.random()*9999;
+  }
+  return d;
+}
+
+// ── Sim state ─────────────────────────────────────────────────
+var AGW, AGH;
+var agT=[[null,null],[null,null],[null,null]];
+var agF=[[null,null],[null,null],[null,null]];
+var trT=[null,null], trF=[null,null];
+var clT=null, clF=null;
+var ai=0, ti=0, frame=0;
+var chMasks=[[true,false,false,false],[false,true,false,false],[false,false,true,false]];
+
+function freeAll(){
+  for(var s=0;s<NS;s++) for(var p=0;p<2;p++){
+    if(agT[s][p]) gl.deleteTexture(agT[s][p]);
+    if(agF[s][p]) gl.deleteFramebuffer(agF[s][p]);
+    agT[s][p]=null; agF[s][p]=null;
+  }
+  for(var p=0;p<2;p++){
+    if(trT[p]) gl.deleteTexture(trT[p]);
+    if(trF[p]) gl.deleteFramebuffer(trF[p]);
+    trT[p]=null; trF[p]=null;
+  }
+  if(clT) gl.deleteTexture(clT); if(clF) gl.deleteFramebuffer(clF);
+  clT=null; clF=null;
+}
+
+function initSim(){
+  freeAll();
+  AGW=Math.ceil(Math.sqrt(NperS)); AGH=Math.ceil(NperS/AGW);
+  for(var s=0;s<NS;s++){
+    var d=spawnOne(species[s].spawn,NperS);
+    agT[s][0]=mkTf(AGW,AGH,d); agT[s][1]=mkTf(AGW,AGH,null);
+    agF[s][0]=mkF(agT[s][0]);   agF[s][1]=mkF(agT[s][1]);
+  }
+  trT[0]=mkTf(W,H,null); trT[1]=mkTf(W,H,null);
+  trF[0]=mkF(trT[0]);     trF[1]=mkF(trT[1]);
+  clT=mkTf(W,H,null);     clF=mkF(clT);
+  [trF[0],trF[1]].forEach(function(fb){
+    gl.bindFramebuffer(gl.FRAMEBUFFER,fb);
+    gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT);
+  });
+  ai=0; ti=0; frame=0;
+}
+
+function fitCanvas(){
+  var scaleX = window.innerWidth  / W;
+  var scaleY = window.innerHeight / H;
+  var s = Math.min(scaleX, scaleY);
+  var dw = Math.floor(W * s);
+  var dh = Math.floor(H * s);
+  canvas.style.width  = dw + 'px';
+  canvas.style.height = dh + 'px';
+  document.getElementById('wrap').style.width  = dw + 'px';
+  document.getElementById('wrap').style.height = dh + 'px';
+}
+
+function rebuild(skipScaleSync){
+  var resSel=document.getElementById('res').value.split('x');
+  W=parseInt(resSel[0]); H=parseInt(resSel[1]);
+  NperS=parseInt(document.getElementById('agc').value);
+  canvas.width=W; canvas.height=H;
+  fitCanvas();
+  var scale=Math.min(W,H)/720;
+  global.sd=Math.round(18*scale);
+  global.speed=parseFloat((2.0*scale).toFixed(1));
+  document.getElementById('sd').value=global.sd;
+  document.getElementById('lsd').textContent=global.sd;
+  document.getElementById('mv').value=global.speed;
+  document.getElementById('lmv').textContent=global.speed.toFixed(1);
+  if(!skipScaleSync){
+    for(var s=0;s<NS;s++){
+      if(species[s].ownMove){
+        species[s].sd=global.sd; species[s].speed=global.speed;
+        var sdEl=document.getElementById('sd'+s); if(sdEl){ sdEl.value=global.sd; document.getElementById('lsd'+s).textContent=global.sd; }
+        var mvEl=document.getElementById('mv'+s); if(mvEl){ mvEl.value=global.speed; document.getElementById('lmv'+s).textContent=global.speed.toFixed(1); }
+      }
+    }
+  }
+  document.getElementById('res-info').textContent='canvas: '+W+'×'+H+' · agents: '+(NperS/1000).toFixed(0)+'k×3';
+  buildShaders();
+  initSim();
+}
+
+window.addEventListener('resize', fitCanvas);
+
+// ── Render loop ───────────────────────────────────────────────
+function step(){
+  var saR=global.sa*Math.PI/180, tsR=global.ts*Math.PI/180;
+  var steps=[0,1,2].map(function(s){
+    var tl=(species[s].ownMove&&species[s].trailLife!==null)?species[s].trailLife:global.trailLife;
+    return 1.0/(60.0*tl);
+  });
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER,trF[1-ti]);
+  gl.viewport(0,0,W,H);
+  gl.useProgram(pFd); bq(pFd);
+  bt(0,trT[ti]); gl.uniform1i(ul(pFd,'tT'),0);
+  gl.uniform3f(ul(pFd,'uStep3'),steps[0],steps[1],steps[2]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  ti=1-ti;
+
+  for(var s=0;s<NS;s++){
+    if(!species[s].enabled) continue;
+    gl.bindFramebuffer(gl.FRAMEBUFFER,trF[ti]);
+    gl.viewport(0,0,W,H);
+    var cm=chMasks[s];
+    gl.colorMask(cm[0],cm[1],cm[2],false);
+    gl.enable(gl.BLEND); gl.blendEquation(0x8008); gl.blendFunc(gl.ONE,gl.ONE);
+    gl.useProgram(pDp);
+    bt(0,agT[s][ai]); gl.uniform1i(ul(pDp,'tA'),0);
+    gl.uniform2f(ul(pDp,'aSz'),AGW,AGH);
+    gl.uniform1f(ul(pDp,'uPtSz'),Math.max(1.0,species[s].trailSize));
+    gl.drawArrays(gl.POINTS,0,NperS);
+    gl.blendEquation(gl.FUNC_ADD); gl.disable(gl.BLEND);
+    gl.colorMask(true,true,true,true);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER,agF[s][1-ai]);
+    gl.viewport(0,0,AGW,AGH);
+    gl.useProgram(pAg); bq(pAg);
+    bt(0,agT[s][ai]); gl.uniform1i(ul(pAg,'tA'),0);
+    bt(1,trT[ti]);     gl.uniform1i(ul(pAg,'tT'),1);
+    var sp=species[s];
+    var eSA=(sp.ownMove&&sp.sa!==null?sp.sa:global.sa)*Math.PI/180;
+    var eSD= sp.ownMove&&sp.sd!==null?sp.sd:global.sd;
+    var eTS=(sp.ownMove&&sp.ts!==null?sp.ts:global.ts)*Math.PI/180;
+    var eSP= sp.ownMove&&sp.speed!==null?sp.speed:global.speed;
+    gl.uniform1f(ul(pAg,'SA'),eSA); gl.uniform1f(ul(pAg,'SD'),eSD);
+    gl.uniform1f(ul(pAg,'TS'),eTS); gl.uniform1f(ul(pAg,'SP'),eSP);
+    gl.uniform1f(ul(pAg,'TM'),frame); gl.uniform1i(ul(pAg,'BHV'),species[s].behav);
+    gl.uniform3f(ul(pAg,'uW'),interact[s][0],interact[s][1],interact[s][2]);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  }
+  ai=1-ai;
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER,clF);
+  gl.viewport(0,0,W,H);
+  gl.useProgram(pCl); bq(pCl);
+  bt(0,trT[ti]); gl.uniform1i(ul(pCl,'tT'),0);
+  // Pass H normalised 0-1, full S and V per species
+  gl.uniform3f(ul(pCl,'uH'), species[0].h/360, species[1].h/360, species[2].h/360);
+  gl.uniform3f(ul(pCl,'uS'), species[0].s, species[1].s, species[2].s);
+  gl.uniform3f(ul(pCl,'uV'), species[0].v, species[1].v, species[2].v);
+  gl.uniform3f(ul(pCl,'uA'), species[0].a, species[1].a, species[2].a);
+  gl.uniform1f(ul(pCl,'uB'), global.bri);
+  gl.uniform3f(ul(pCl,'uSep3'),
+    species[0].separate ? 1.0 : 0.0,
+    species[1].separate ? 1.0 : 0.0,
+    species[2].separate ? 1.0 : 0.0);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.viewport(0,0,W,H);
+  gl.useProgram(pGl); bq(pGl);
+  bt(0,clT); gl.uniform1i(ul(pGl,'tC'),0);
+  gl.uniform1f(ul(pGl,'uG'),global.glow);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  frame++;
+  requestAnimationFrame(step);
+}
+
+// ── UI: floating panel drag ────────────────────────────────────
+var uiEl=document.getElementById('ui');
+var bar=document.getElementById('ui-bar');
+var dragging=false, dragOX=0, dragOY=0;
+bar.addEventListener('mousedown',function(e){
+  if(e.target===document.getElementById('ui-toggle')) return;
+  dragging=true; dragOX=e.clientX-uiEl.offsetLeft; dragOY=e.clientY-uiEl.offsetTop;
+  e.preventDefault();
+});
+window.addEventListener('mousemove',function(e){ if(dragging){ uiEl.style.left=(e.clientX-dragOX)+'px'; uiEl.style.top=(e.clientY-dragOY)+'px'; } });
+window.addEventListener('mouseup',function(){ dragging=false; });
+
+// ── UI: collapse/expand ────────────────────────────────────────
+var collapsed=false;
+var uiBody=document.getElementById('ui-body');
+document.getElementById('ui-toggle').onclick=function(){
+  collapsed=!collapsed;
+  uiBody.style.display=collapsed?'none':'';
+  this.textContent=collapsed?'▸':'▾';
+};
+
+// ── UI: species tabs ───────────────────────────────────────────
+var curTab=0;
+function showTab(i){ curTab=i; for(var t=0;t<NS;t++){ document.getElementById('tab'+t).className='sp-tab'+(t===i?' active':''); document.getElementById('panel'+t).style.display=t===i?'block':'none'; } }
+for(var t=0;t<NS;t++){
+  (function(i){
+    document.getElementById('tab'+i).onclick=function(){ showTab(i); };
+    document.getElementById('en'+i).onchange=function(){ species[i].enabled=this.checked; };
+    document.getElementById('bh'+i).onchange=function(){ species[i].behav=parseInt(this.value); };
+    document.getElementById('sp'+i).onchange=function(){ species[i].spawn=this.value; };
+
+    // HSV sliders
+    function updateHSV(i){
+      species[i].h=parseInt(document.getElementById('hh'+i).value);
+      species[i].s=parseInt(document.getElementById('hs'+i).value)/100;
+      species[i].v=parseInt(document.getElementById('hv'+i).value)/100;
+      species[i].a=parseInt(document.getElementById('ha'+i).value)/100;
+      document.getElementById('lhh'+i).textContent=species[i].h+'°';
+      document.getElementById('lhs'+i).textContent=Math.round(species[i].s*100)+'%';
+      document.getElementById('lhv'+i).textContent=Math.round(species[i].v*100)+'%';
+      document.getElementById('lha'+i).textContent=Math.round(species[i].a*100)+'%';
+      updatePreview(i);
+    }
+    document.getElementById('hh'+i).oninput=function(){ updateHSV(i); };
+    document.getElementById('hs'+i).oninput=function(){ updateHSV(i); };
+    document.getElementById('hv'+i).oninput=function(){ updateHSV(i); };
+    document.getElementById('ha'+i).oninput=function(){ updateHSV(i); };
+    document.getElementById('sep'+i).onchange=function(){ species[i].separate=this.checked; };
+
+    // Trail size
+    (function(el,lb){ el.oninput=function(){ species[i].trailSize=parseFloat(el.value); lb.textContent=parseFloat(el.value).toFixed(1); }; })(document.getElementById('ts'+i),document.getElementById('lts'+i));
+
+    // Own movement toggle
+    (function(omEl,smEl){
+      omEl.onchange=function(){
+        species[i].ownMove=this.checked;
+        smEl.className='sp-move'+(this.checked?' active':'');
+        if(this.checked){
+          ['sa','sd','tu','mv','tl'].forEach(function(pfx){
+            var slEl=document.getElementById(pfx+i), lbEl=document.getElementById('l'+pfx+i);
+            if(pfx==='sa'){ slEl.value=global.sa; lbEl.textContent=global.sa+'°'; species[i].sa=global.sa; }
+            if(pfx==='sd'){ slEl.value=global.sd; lbEl.textContent=global.sd; species[i].sd=global.sd; }
+            if(pfx==='tu'){ slEl.value=global.ts; lbEl.textContent=global.ts+'°'; species[i].ts=global.ts; }
+            if(pfx==='mv'){ slEl.value=global.speed; lbEl.textContent=global.speed.toFixed(1); species[i].speed=global.speed; }
+            if(pfx==='tl'){ slEl.value=global.trailLife; lbEl.textContent=global.trailLife+'s'; species[i].trailLife=global.trailLife; }
+          });
+        }
+      };
+    })(document.getElementById('om'+i),document.getElementById('sm'+i));
+
+    (function(el,lb){ el.oninput=function(){ species[i].sa=parseFloat(el.value); lb.textContent=el.value+'°'; }; })(document.getElementById('sa'+i),document.getElementById('lsa'+i));
+    (function(el,lb){ el.oninput=function(){ species[i].sd=parseFloat(el.value); lb.textContent=el.value; }; })(document.getElementById('sd'+i),document.getElementById('lsd'+i));
+    (function(el,lb){ el.oninput=function(){ species[i].ts=parseFloat(el.value); lb.textContent=el.value+'°'; }; })(document.getElementById('tu'+i),document.getElementById('ltu'+i));
+    (function(el,lb){ el.oninput=function(){ species[i].speed=parseFloat(el.value); lb.textContent=parseFloat(el.value).toFixed(1); }; })(document.getElementById('mv'+i),document.getElementById('lmv'+i));
+    (function(el,lb){ el.oninput=function(){ species[i].trailLife=parseFloat(el.value); lb.textContent=el.value+'s'; }; })(document.getElementById('tl'+i),document.getElementById('ltl'+i));
+
+    // Init preview
+    updatePreview(i);
+  })(t);
+}
+
+// ── UI: interaction matrix ─────────────────────────────────────
+var mxStates=[[1,0,0],[0,1,0],[0,0,1]];
+var mxLabels={'1':'follow','-1':'flee','0':'ignore'};
+var mxClasses={'1':'attract','-1':'repel','0':'ignore'};
+function cycleMx(r,c){ var cur=mxStates[r][c], next=cur===1?-1:(cur===-1?0:1); mxStates[r][c]=next; interact[r][c]=next; var el=document.getElementById('mx'+r+c); el.textContent=mxLabels[''+next]; el.className='mx-cell '+mxClasses[''+next]; }
+for(var mr=0;mr<NS;mr++) for(var mc=0;mc<NS;mc++){
+  (function(r,c){ var el=document.getElementById('mx'+r+c); if(r===c){el.style.cursor='default';return;} el.onclick=function(){cycleMx(r,c);}; })(mr,mc);
+}
+
+// ── UI: global sliders ─────────────────────────────────────────
+function wire(id,key,lid,fmt){ var el=document.getElementById(id),lb=document.getElementById(lid); el.oninput=function(){ global[key]=parseFloat(el.value); lb.textContent=fmt(parseFloat(el.value)); }; }
+wire('sa','sa','lsa',       function(v){return v+'°';});
+wire('sd','sd','lsd',       function(v){return v;});
+wire('ts','ts','lts',       function(v){return v+'°';});
+wire('mv','speed','lmv',    function(v){return v.toFixed(1);});
+wire('tl','trailLife','ltl',function(v){return v+'s';});
+wire('br','bri','lbr',      function(v){return v.toFixed(2);});
+wire('gl','glow','lgl',     function(v){return v.toFixed(2);});
+
+document.getElementById('rebuildBtn').onclick=rebuild;
+document.getElementById('resetBtn').onclick=initSim;
+
+// Fullscreen toggle
+document.getElementById('fullscreenBtn').onclick=function(){
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen();
+    this.textContent='⛶  exit fullscreen';
+  } else {
+    document.exitFullscreen();
+    this.textContent='⛶  fullscreen';
+  }
+};
+document.addEventListener('fullscreenchange',function(){
+  var btn=document.getElementById('fullscreenBtn');
+  if(btn) btn.textContent=document.fullscreenElement?'⛶  exit fullscreen':'⛶  fullscreen';
+});
+
+// ── Presets ────────────────────────────────────────────────────
+
+// Capture the entire current UI state into a plain object
+function captureSettings(){
+  return {
+    res: document.getElementById('res').value,
+    agc: document.getElementById('agc').value,
+    global: JSON.parse(JSON.stringify(global)),
+    species: species.map(function(sp){ return JSON.parse(JSON.stringify(sp)); }),
+    interact: interact.map(function(r){ return r.slice(); }),
+    mxStates: mxStates.map(function(r){ return r.slice(); })
+  };
+}
+
+// Apply a saved settings object back to JS state and all UI controls
+function applySettings(cfg){
+  // Resolution / agents — set dropdowns then rebuild
+  document.getElementById('res').value = cfg.res;
+  document.getElementById('agc').value = cfg.agc;
+
+  // Restore global
+  Object.assign(global, cfg.global);
+
+  // Restore species
+  cfg.species.forEach(function(src, i){
+    Object.assign(species[i], src);
+  });
+
+  // Restore interaction matrix
+  cfg.interact.forEach(function(row, r){
+    row.forEach(function(val, c){
+      // Clamp to valid display states: -1, 0, or 1
+      var safeVal = val > 0 ? 1 : val < 0 ? -1 : 0;
+      interact[r][c] = val;        // shader gets the raw value
+      mxStates[r][c] = safeVal;   // UI uses clamped state
+      if(r !== c){
+        var el = document.getElementById('mx'+r+c);
+        el.textContent = mxLabels[''+safeVal];
+        el.className = 'mx-cell '+mxClasses[''+safeVal];
+      }
+    });
+  });
+
+  // Sync all global sliders
+  var gmap = {sa:'sa',sd:'sd',ts:'ts',speed:'mv',trailLife:'tl',bri:'br',glow:'gl'};
+  var lfmt = {sa:function(v){return v+'°';},sd:function(v){return v;},ts:function(v){return v+'°';},speed:function(v){return v.toFixed(1);},trailLife:function(v){return v+'s';},bri:function(v){return v.toFixed(2);},glow:function(v){return v.toFixed(2);}};
+  var lid  = {sa:'lsa',sd:'lsd',ts:'lts',speed:'lmv',trailLife:'ltl',bri:'lbr',glow:'lgl'};
+  Object.keys(gmap).forEach(function(key){
+    var el=document.getElementById(gmap[key]);
+    if(el){ el.value=global[key]; document.getElementById(lid[key]).textContent=lfmt[key](global[key]); }
+  });
+
+  // Sync all per-species controls
+  for(var i=0;i<NS;i++){
+    var sp=species[i];
+    document.getElementById('en'+i).checked = sp.enabled;
+
+    // HSV sliders
+    document.getElementById('hh'+i).value = sp.h;
+    document.getElementById('hs'+i).value = Math.round(sp.s*100);
+    document.getElementById('hv'+i).value = Math.round(sp.v*100);
+    document.getElementById('ha'+i).value = Math.round(sp.a*100);
+    document.getElementById('lhh'+i).textContent = sp.h+'°';
+    document.getElementById('lhs'+i).textContent = Math.round(sp.s*100)+'%';
+    document.getElementById('lhv'+i).textContent = Math.round(sp.v*100)+'%';
+    document.getElementById('lha'+i).textContent = Math.round(sp.a*100)+'%';
+    document.getElementById('sep'+i).checked = sp.separate;
+    updatePreview(i);
+
+    // Behaviour / spawn / trail size
+    document.getElementById('bh'+i).value = sp.behav;
+    document.getElementById('sp'+i).value = sp.spawn;
+    document.getElementById('ts'+i).value = sp.trailSize;
+    document.getElementById('lts'+i).textContent = sp.trailSize.toFixed(1);
+
+    // Own movement
+    var omEl = document.getElementById('om'+i);
+    var smEl = document.getElementById('sm'+i);
+    omEl.checked = sp.ownMove;
+    smEl.className = 'sp-move'+(sp.ownMove?' active':'');
+    if(sp.ownMove){
+      var mv = {sa0:'sa',sd0:'sd',tu0:'ts',mv0:'speed',tl0:'trailLife'};
+      var spKeys = {sa0:sp.sa,sd0:sp.sd,tu0:sp.ts,mv0:sp.speed,tl0:sp.trailLife};
+      ['sa','sd','tu','mv','tl'].forEach(function(pfx){
+        var slEl=document.getElementById(pfx+i), lbEl=document.getElementById('l'+pfx+i);
+        if(pfx==='sa'&&sp.sa!==null){ slEl.value=sp.sa; lbEl.textContent=sp.sa+'°'; }
+        if(pfx==='sd'&&sp.sd!==null){ slEl.value=sp.sd; lbEl.textContent=sp.sd; }
+        if(pfx==='tu'&&sp.ts!==null){ slEl.value=sp.ts; lbEl.textContent=sp.ts+'°'; }
+        if(pfx==='mv'&&sp.speed!==null){ slEl.value=sp.speed; lbEl.textContent=sp.speed.toFixed(1); }
+        if(pfx==='tl'&&sp.trailLife!==null){ slEl.value=sp.trailLife; lbEl.textContent=sp.trailLife+'s'; }
+      });
+    }
+  }
+
+  rebuild(true); // recompile shaders + reinit sim, skip per-species scale stomping
+
+  // rebuild() rescales global.sd and global.speed — restore the saved values
+  global.sd    = cfg.global.sd;
+  global.speed = cfg.global.speed;
+  document.getElementById('sd').value = global.sd;
+  document.getElementById('lsd').textContent = global.sd;
+  document.getElementById('mv').value = global.speed;
+  document.getElementById('lmv').textContent = global.speed.toFixed(1);
+}
+
+// ── Built-in presets ───────────────────────────────────────────
+var BUILTIN_PRESETS = [
+  { name: 'Default',
+    cfg: { res:'1280x720', agc:'90000',
+      global:{sa:30,sd:18,ts:25,speed:2.0,trailLife:60,bri:1.0,glow:0.0},
+      species:[
+        {enabled:true, h:0,  s:1,v:1,a:1,separate:false,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:true, h:240,s:1,v:1,a:1,separate:false,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:false,h:120,s:1,v:1,a:1,separate:false,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null}
+      ],
+      interact:[[1,0,0],[0,1,0],[0,0,1]],
+      mxStates:[[1,0,0],[0,1,0],[0,0,1]] }},
+  { name: 'Classic Mycelium',
+    cfg: { res:'1280x720', agc:'90000',
+      global:{sa:30,sd:18,ts:25,speed:2.0,trailLife:120,bri:1.0,glow:0.3},
+      species:[
+        {enabled:true, h:120,s:1,v:1,a:1,separate:false,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:false,h:240,s:1,v:1,a:1,separate:false,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:false,h:0,  s:1,v:1,a:1,separate:false,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null}
+      ],
+      interact:[[1,0,0],[0,1,0],[0,0,1]],
+      mxStates:[[1,0,0],[0,1,0],[0,0,1]] }},
+  { name: 'Predator / Prey',
+    cfg: { res:'1280x720', agc:'90000',
+      global:{sa:25,sd:15,ts:20,speed:2.5,trailLife:60,bri:1.0,glow:0.0},
+      species:[
+        {enabled:true, h:0,  s:1,v:1,a:1,separate:true, behav:4,spawn:'random',trailSize:1.0,ownMove:true,sa:25,sd:15,ts:20,speed:2.5,trailLife:30},
+        {enabled:true, h:180,s:1,v:1,a:1,separate:true, behav:1,spawn:'random',trailSize:2.0,ownMove:true,sa:25,sd:15,ts:20,speed:0.8,trailLife:15},
+        {enabled:false,h:120,s:1,v:1,a:1,separate:false,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null}
+      ],
+      interact:[[1,1,0],[-1,1,0],[0,0,1]],
+      mxStates:[[1,1,0],[-1,1,0],[0,0,1]] }},
+  { name: 'Rock Paper Scissors',
+    cfg: { res:'1280x720', agc:'90000',
+      global:{sa:30,sd:18,ts:25,speed:2.0,trailLife:60,bri:1.0,glow:0.0},
+      species:[
+        {enabled:true,h:0,  s:1,v:1,a:1,separate:true,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:true,h:240,s:1,v:1,a:1,separate:true,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:true,h:120,s:1,v:1,a:1,separate:true,behav:0,spawn:'random',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null}
+      ],
+      interact:[[1,-1,0],[0,1,-1],[-1,0,1]],
+      mxStates:[[1,-1,0],[0,1,-1],[-1,0,1]] }},
+  { name: 'Vortex Garden',
+    cfg: { res:'1280x720', agc:'90000',
+      global:{sa:20,sd:12,ts:15,speed:1.8,trailLife:30,bri:0.35,glow:0.2},
+      species:[
+        {enabled:true,h:300,s:1,v:1,a:1,separate:false,behav:3,spawn:'random',trailSize:1.5,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:true,h:180,s:1,v:1,a:1,separate:false,behav:3,spawn:'random',trailSize:1.5,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:true,h:60, s:1,v:1,a:1,separate:false,behav:1,spawn:'random',trailSize:1.0,ownMove:true,sa:20,sd:12,ts:15,speed:1.8,trailLife:15}
+      ],
+      interact:[[1,0,0],[0,1,0],[0,0,1]],
+      mxStates:[[1,0,0],[0,1,0],[0,0,1]] }},
+  { name: "Tom's Preset",
+    cfg: { res:'1280x720', agc:'90000',
+      global:{sa:30,sd:18,ts:25,speed:2.0,trailLife:60,bri:1.0,glow:0.0},
+      species:[
+        {enabled:true, h:0,   s:1.0, v:1.0, a:1.0, separate:false, behav:3, spawn:'edges', trailSize:1.0, ownMove:true,  sa:30, sd:18, ts:25, speed:2.0, trailLife:300},
+        {enabled:true, h:240, s:1.0, v:1.0, a:1.0, separate:false, behav:1, spawn:'point', trailSize:1.0, ownMove:true,  sa:17, sd:18, ts:60, speed:2.0, trailLife:5},
+        {enabled:true, h:49,  s:1.0, v:1.0, a:1.0, separate:false, behav:4, spawn:'ring',  trailSize:1.0, ownMove:true,  sa:30, sd:18, ts:25, speed:2.0, trailLife:5}
+      ],
+      interact:[[1,0,1],[0,1,1],[-1,-1,1]],
+      mxStates:[[1,0,1],[0,1,1],[-1,-1,1]] } },
+  { name: 'Territorial Split',
+    cfg: { res:'1280x720', agc:'90000',
+      global:{sa:35,sd:20,ts:30,speed:1.8,trailLife:120,bri:1.0,glow:0.0},
+      species:[
+        {enabled:true,h:0,  s:1,v:1,a:1,separate:true,behav:0,spawn:'blobs_l',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:true,h:240,s:1,v:1,a:1,separate:true,behav:0,spawn:'blobs_r',trailSize:1.0,ownMove:false,sa:null,sd:null,ts:null,speed:null,trailLife:null},
+        {enabled:true,h:60, s:1,v:1,a:1,separate:true,behav:3,spawn:'ring',   trailSize:1.0,ownMove:true, sa:35,sd:20,ts:30,speed:1.8,trailLife:45}
+      ],
+      interact:[[1,-1,0],[-1,1,0],[-1,-1,1]],
+      mxStates:[[1,-1,0],[-1,1,0],[-1,-1,1]] } }
+];
+
+// ── localStorage helpers ───────────────────────────────────────
+var LS_KEY = 'physarum_presets';
+
+function loadUserPresets(){
+  try { return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); } catch(e){ return []; }
+}
+function saveUserPresets(arr){
+  localStorage.setItem(LS_KEY, JSON.stringify(arr));
+}
+
+// ── Build the dropdown ─────────────────────────────────────────
+function refreshPresetDropdown(){
+  var sel = document.getElementById('presetSel');
+  var prev = sel.value;
+  sel.innerHTML = '';
+
+  // Built-ins group
+  var grpB = document.createElement('optgroup');
+  grpB.label = 'built-in';
+  BUILTIN_PRESETS.forEach(function(p, i){
+    var opt = document.createElement('option');
+    opt.value = 'b:'+i;
+    opt.textContent = p.name;
+    grpB.appendChild(opt);
+  });
+  sel.appendChild(grpB);
+
+  // User presets group
+  var user = loadUserPresets();
+  if(user.length > 0){
+    var grpU = document.createElement('optgroup');
+    grpU.label = 'saved';
+    user.forEach(function(p, i){
+      var opt = document.createElement('option');
+      opt.value = 'u:'+i;
+      opt.textContent = p.name;
+      grpU.appendChild(opt);
+    });
+    sel.appendChild(grpU);
+  }
+
+  // Restore selection if still valid
+  if(prev) sel.value = prev;
+}
+
+// Load selected preset
+document.getElementById('presetLoadBtn').onclick = function(){
+  var val = document.getElementById('presetSel').value;
+  if(!val) return;
+  var parts = val.split(':'), type=parts[0], idx=parseInt(parts[1]);
+  var cfg = type==='b' ? BUILTIN_PRESETS[idx].cfg : loadUserPresets()[idx].cfg;
+  if(cfg) applySettings(JSON.parse(JSON.stringify(cfg)));
+};
+
+// Save current settings as a new preset
+document.getElementById('presetSaveBtn').onclick = function(){
+  var name = document.getElementById('presetName').value.trim();
+  if(!name){ alert('Please enter a preset name.'); return; }
+  var user = loadUserPresets();
+  // Overwrite if same name exists
+  var existing = user.findIndex(function(p){ return p.name===name; });
+  var entry = { name:name, cfg:captureSettings() };
+  if(existing >= 0) user[existing] = entry;
+  else user.push(entry);
+  saveUserPresets(user);
+  document.getElementById('presetName').value = '';
+  refreshPresetDropdown();
+  // Select the newly saved one
+  var sel = document.getElementById('presetSel');
+  var newIdx = loadUserPresets().findIndex(function(p){ return p.name===name; });
+  sel.value = 'u:'+newIdx;
+};
+
+// Delete selected preset (user presets only)
+document.getElementById('presetDelBtn').onclick = function(){
+  var val = document.getElementById('presetSel').value;
+  if(!val || val.startsWith('b:')){ alert('Built-in presets cannot be deleted.'); return; }
+  var idx = parseInt(val.split(':')[1]);
+  var user = loadUserPresets();
+  var name = user[idx] ? user[idx].name : '?';
+  if(!confirm('Delete preset "'+name+'"?')) return;
+  user.splice(idx, 1);
+  saveUserPresets(user);
+  refreshPresetDropdown();
+};
+
+refreshPresetDropdown();
+
+// Presets section collapse toggle
+var presetCollapsed = true;
+document.getElementById('presetBody').style.display = 'none';
+document.getElementById('presetArrow').textContent = '▸';
+document.getElementById('presetToggle').onclick = function(){
+  presetCollapsed = !presetCollapsed;
+  document.getElementById('presetBody').style.display = presetCollapsed ? 'none' : '';
+  document.getElementById('presetArrow').textContent = presetCollapsed ? '▸' : '▾';
+};
+
+// Global movement collapse toggle
+var moveCollapsed = false;
+document.getElementById('moveToggle').onclick = function(){
+  moveCollapsed = !moveCollapsed;
+  document.getElementById('moveBody').style.display = moveCollapsed ? 'none' : '';
+  document.getElementById('moveArrow').textContent = moveCollapsed ? '▸' : '▾';
+};
+
+// ── Boot ──────────────────────────────────────────────────────
+rebuild();
+step();
+
+})();
+</script>
+</body>
+</html>
